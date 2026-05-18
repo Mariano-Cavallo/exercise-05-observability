@@ -43,6 +43,11 @@ services:
       - grafana_data:/var/lib/grafana
     depends_on:
       - prometheus
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   node-exporter:
     image: prom/node-exporter:latest

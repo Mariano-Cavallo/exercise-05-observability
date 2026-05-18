@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from fastapi import Depends, FastAPI, HTTPException, Response
-from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import Counter, Gauge, Histogram, generate_latest, CONTENT_TYPE_LATEST
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from src.database import Base, engine, get_db
@@ -20,6 +20,10 @@ http_request_duration_seconds = Histogram(
     "http_request_duration_seconds",
     "HTTP request duration in seconds",
     ["method", "path"],
+)
+active_nodes = Gauge(
+    "active_nodes",
+    "Number of active nodes",
 )
 
 @app.middleware("http")
@@ -51,6 +55,7 @@ def health(db: Session = Depends(get_db)):
     except Exception:
         db_status = "disconnected"
     count = db.query(Node).filter(Node.status == "active").count()
+    active_nodes.set(count)
     return {"status": "ok", "db": db_status, "nodes_count": count}
 
 @app.post("/api/nodes", response_model=NodeResponse, status_code=201)
@@ -62,6 +67,7 @@ def register_node(node: NodeCreate, db: Session = Depends(get_db)):
     db.add(db_node)
     db.commit()
     db.refresh(db_node)
+    active_nodes.inc()
     return db_node
 
 @app.get("/api/nodes", response_model=list[NodeResponse])
@@ -97,4 +103,5 @@ def delete_node(name: str, db: Session = Depends(get_db)):
     node.status = "inactive"
     node.updated_at = datetime.now(timezone.utc)
     db.commit()
+    active_nodes.dec()
     return Response(status_code=204)
